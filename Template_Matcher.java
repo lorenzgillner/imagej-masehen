@@ -19,7 +19,15 @@ public class Template_Matcher implements PlugInFilter {
 	}
 
 	public void run(ImageProcessor ip) {
-		double TOLERANCE = 34.0;
+		/* GUI stuff */
+		GenericDialog gd = new GenericDialog("Optionen");
+		Dimension screensize = Toolkit.getDefaultToolkit().getScreenSize();
+		gd.setSize(200, 100);
+		gd.addNumericField("Toleranz: ", 34.0, 0);
+		gd.setLocation((int)screensize.getWidth()/2, (int)screensize.getHeight()/2);
+		gd.show();
+		
+		double tolerance = gd.getNextNumber();
 		
 		/* Schleifenzähler */
 		int x, y, i, j;
@@ -27,7 +35,6 @@ public class Template_Matcher implements PlugInFilter {
 		/* ein paar Zwischenspeicher */
 		float sum_temp, sum_copy, sum_both;
 		float p_temp, p_copy;
-		float c;
 
 		/* Dimensionen des Originalbildes */
 		int w = ip.getWidth();
@@ -80,12 +87,11 @@ public class Template_Matcher implements PlugInFilter {
 		}
 
 		/* Maxima finden */
-		Polygon maxima = new MaximumFinder().getMaxima(new FloatProcessor(corr), TOLERANCE, false);
+		Polygon maxima = new MaximumFinder().getMaxima(new FloatProcessor(corr), tolerance, false);
 		
 		
 		/* Ausgabebild erzeugen */
 		ImageProcessor ip_output = ip.duplicate();
-		ImagePlus output = new ImagePlus("Template Matcher: "+maxima.npoints+" Treffer", ip_output);
 		
 		ip_output.setColor(0xff00ff);
 		ip_output.setLineWidth(3);
@@ -95,8 +101,8 @@ public class Template_Matcher implements PlugInFilter {
 			ip_output.drawRect(maxima.xpoints[i], maxima.ypoints[i], roi.width, roi.height);
 		}
 		
-		output.show();
-		output.updateAndDraw();
+		/* Ausgabe anzeigen */
+		new ImagePlus("Template Matcher: "+maxima.npoints+" Treffer", ip_output).show();
 	}
 
 }
