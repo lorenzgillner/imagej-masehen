@@ -89,7 +89,6 @@ public class Template_Matcher implements PlugInFilter {
 		/* Maxima finden */
 		Polygon maxima = new MaximumFinder().getMaxima(new FloatProcessor(corr), tolerance, false);
 		
-		
 		/* Ausgabebild erzeugen */
 		ImageProcessor ip_output = ip.duplicate();
 		
