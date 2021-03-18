@@ -84,15 +84,21 @@ public class Template_Matcher implements PlugInFilter {
 		/* Maxima finden */
 		Polygon maxima = new MaximumFinder().getMaxima(new FloatProcessor(corr), TOLERANCE, false);
 		
-		ip.setColor(0xff00ff);
-		ip.setLineWidth(3);
+		
+		/* Ausgabebild erzeugen */
+		ImageProcessor ip_output = ip.duplicate();
+		ImagePlus output = new ImagePlus("Template Matcher: "+maxima.npoints+" Treffer", ip_output);
+		
+		ip_output.setColor(0xff00ff);
+		ip_output.setLineWidth(3);
 		
 		/* Übereistimmungen mit Template hervorheben */
 		for (i = 0; i < maxima.npoints; i++) {
-			ip.drawRect(maxima.xpoints[i], maxima.ypoints[i], roi.width, roi.height);
+			ip_output.drawRect(maxima.xpoints[i], maxima.ypoints[i], roi.width, roi.height);
 		}
 		
-		ip.resetRoi();
+		output.show();
+		output.updateAndDraw();
 	}
 
 }
