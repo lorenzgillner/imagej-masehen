@@ -2,6 +2,7 @@ import ij.*;
 import ij.ImagePlus;
 import ij.gui.*;
 import ij.gui.NewImage;
+import ij.gui.GenericDialog;
 import ij.gui.ProgressBar;
 import ij.plugin.filter.PlugInFilter;
 import ij.plugin.filter.MaximumFinder;
@@ -18,7 +19,7 @@ public class Template_Matcher implements PlugInFilter {
 	}
 
 	public void run(ImageProcessor ip) {
-		double TOLERANCE = 10.0;
+		double TOLERANCE = 34.0;
 		
 		/* Schleifenzähler */
 		int x, y, i, j;
@@ -41,10 +42,7 @@ public class Template_Matcher implements PlugInFilter {
 		ImagePlus copy = new ImagePlus("Arbeitskopie", ip_copy);
 		
 		/* übertrage ursprüngliche ROI auf Arbeitskopie */
-		ip_copy.setRoi(roi); 
-		
-		/* Binarisierung der Arbeitskopie */
-		// ip_copy.autoThreshold();
+		ip_copy.setRoi(roi);
 
 		/* extrahiere ROI aus Arbeitskopie als eigenes Bild */
 		FloatProcessor ip_temp = ip_copy.crop().convertToFloatProcessor();
