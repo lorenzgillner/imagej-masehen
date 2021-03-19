@@ -23,7 +23,7 @@ public class Template_Matcher implements PlugInFilter {
 		GenericDialog gd = new GenericDialog("Optionen");
 		Dimension screensize = Toolkit.getDefaultToolkit().getScreenSize();
 		gd.setSize(200, 100);
-		gd.addNumericField("Toleranz: ", 34.0, 0);
+		gd.addNumericField("Toleranz: ", 0.36, 2);
 		gd.setLocation((int)screensize.getWidth()/2, (int)screensize.getHeight()/2);
 		gd.show();
 		
@@ -46,7 +46,6 @@ public class Template_Matcher implements PlugInFilter {
 
 		/* Arbeitskopie als Graustufenbild */
 		FloatProcessor ip_copy = ip.convertToFloatProcessor();
-		ImagePlus copy = new ImagePlus("Arbeitskopie", ip_copy);
 		
 		/* übertrage ursprüngliche ROI auf Arbeitskopie */
 		ip_copy.setRoi(roi);
@@ -87,7 +86,8 @@ public class Template_Matcher implements PlugInFilter {
 		}
 
 		/* Maxima finden */
-		Polygon maxima = new MaximumFinder().getMaxima(new FloatProcessor(corr), tolerance, false);
+		FloatProcessor ip_corr = new FloatProcessor(corr);
+		Polygon maxima = new MaximumFinder().getMaxima(ip_corr, (ip_corr.getMax() - ip_corr.getMin()) * tolerance, false);
 		
 		/* Ausgabebild erzeugen */
 		ImageProcessor ip_output = ip.duplicate();
