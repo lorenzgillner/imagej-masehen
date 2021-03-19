@@ -23,7 +23,7 @@ public class Template_Matcher implements PlugInFilter {
 		GenericDialog gd = new GenericDialog("Optionen");
 		Dimension screensize = Toolkit.getDefaultToolkit().getScreenSize();
 		gd.setSize(200, 100);
-		gd.addNumericField("Toleranz: ", 0.36, 2);
+		gd.addNumericField("Toleranz: ", 0.34, 2);
 		gd.setLocation((int)screensize.getWidth()/2, (int)screensize.getHeight()/2);
 		gd.show();
 		
