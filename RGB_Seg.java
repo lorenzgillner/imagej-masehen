@@ -6,7 +6,7 @@ import ij.gui.GenericDialog;
 import ij.gui.ProgressBar;
 import ij.gui.Roi;
 import ij.plugin.filter.PlugInFilter;
-import ij.plugin.frame.RoiManager;
+import ij.plugin.frame.ColorThresholder;
 import ij.process.*;
 import ij.util.ArrayUtil;
 import java.awt.*;
@@ -26,6 +26,8 @@ public class RGB_Seg implements PlugInFilter {
 		String[] opts = {"Cut", "Highlight"};
 		gd.addChoice("Modus", opts, "Mask");
 		gd.addNumericField("Intervallgröße", 2.0, 2);
+		gd.addCheckbox("Zeige Log", false);
+		gd.addCheckbox("Visualisiere Merkmalsraum", true);
 		gd.setLocation((int)screensize.getWidth()/2, (int)screensize.getHeight()/2);
 		gd.showDialog();
 		
@@ -36,12 +38,16 @@ public class RGB_Seg implements PlugInFilter {
 		int mode = gd.getNextChoiceIndex();
 		/* Skalierungsfaktor */
 		double s = gd.getNextNumber();
+		/* sonstige Optionen */
+		boolean show_log = gd.getNextBoolean();
+		boolean show_vis = gd.getNextBoolean();
 		
 		/* Hilfsvariablen */
-		int i, j, n, p, x, y;
+		int i, n, p, x, y;
 		
 		int black = 0x000000;
 		int magenta = 0xff00ff;
+		int white = 0xffffff;
 		
 		double t, pf, r, g, b;
 
@@ -61,7 +67,6 @@ public class RGB_Seg implements PlugInFilter {
 		
 		/* ROI (Rechteck) */
 		Rectangle roi = ip.getRoi();
-		// ImageProcessor ip_roi = ip.crop();
 		
 		/* ROI-Maske (für sonstige Formen) */
 		ImageProcessor ip_roi = ip.getMask();
@@ -70,12 +75,12 @@ public class RGB_Seg implements PlugInFilter {
 		 * also erst im nächsten Schritt zählen */
 		n = 0;
 		
-		/* m_roi berechnen */
+		/* m_roi summieren */
 		for (y = 0; y < roi.height; y++) {
 			for (x = 0; x < roi.width; x++) {
 				/* betrachte Pixel nur, wenn maskiert */
-				if ((int)ip_roi.get(i) > black) {
-					p = (int)ip.get(x, y);
+				if (((int)ip_roi.get(x, y) & 0xff) > 0x00) {
+					p = (int)ip.get(x + roi.x, y + roi.y);
 					m_roi[0] += (p >> 16) & 0xff;
 					m_roi[1] += (p >> 8) & 0xff;
 					m_roi[2] += p & 0xff;
@@ -84,14 +89,18 @@ public class RGB_Seg implements PlugInFilter {
 			}
 		}
 		
-		/* Standardabweichung gleich mit berechnen */
+		/* Merkmalsmittelwert und Standardabweichung berechnen */
 		for (i = 0; i < c; i++) {
 			m_roi[i] /= n;
 			t = .0;
-			for (j = 0; j < n; j++) {
-				p = (int)ip_roi.get(j);
-				pf = (double)((p >> (16 - (i * 8))) & 0xff);
-				t += Math.pow((pf - (double)m_roi[i]), 2);
+			for (y = 0; y < roi.height; y++) {
+				for (x = 0; x < roi.width; x++) {
+					if (((int)ip_roi.get(x, y) & 0xff) > 0x00) {
+						p = (int)ip.get(x + roi.x, y + roi.y);
+						pf = (double)((p >> (16 - (i * 8))) & 0xff);
+						t += Math.pow((pf - (double)m_roi[i]), 2);
+					}
+				}
 			}
 			σ[i] = Math.sqrt(t/(n-1));
 		}
@@ -104,6 +113,11 @@ public class RGB_Seg implements PlugInFilter {
 		max[0] = (double)m_roi[0] + s * σ[0];
 		max[1] = (double)m_roi[1] + s * σ[1];
 		max[2] = (double)m_roi[2] + s * σ[2];
+		
+		if (show_log) {
+			IJ.log("min: "+Arrays.toString(min));
+			IJ.log("max: "+Arrays.toString(max));
+		}
 		
 		/* Kopie für Ausgabe anlegen */
 		ImageProcessor ip_out = ip.duplicate();
@@ -129,6 +143,37 @@ public class RGB_Seg implements PlugInFilter {
 		
 		/* Ausgabe anzeigen */
 		new ImagePlus("RGB-Segmentierung", ip_out).show();
+		
+		if (show_vis) {
+			int pc = ip.getPixelCount();
+			int[] Y = new int[pc];
+			int[] U = new int[pc];
+			int[] V = new int[pc];
+			int[][] yuv_space = new int[255][255];
+			int[] rrr = new int[255*255];
+			rgb2yuv(ip, Y, U, V);
+			for (i = 0; i < pc; i++) {
+				yuv_space[127+V[i]/2][127+U[i]/2] = (int)ip.get(i);
+			}
+			ImageProcessor ip_yuv = ip.createProcessor(255, 255);
+			ip_yuv.setPixels(yuv_space);
+			new ImagePlus("Merkmalsraum", ip_yuv).show();
+		}
+	}
+	
+	private void rgb2yuv(ImageProcessor ip, int[] Y, int[] U, int[] V) {
+		int y, p;
+		double r, g, b;
+		for (int i = 0; i < ip.getPixelCount(); i++) {
+			p = (int)ip.get(i);
+			r = (double)((p >> 16) & 0xff);
+			g = (double)((p >> 8) & 0xff);
+			b = (double)(p & 0xff);
+			y = (int)Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+			U[i] = (int)Math.round(0.493 * (b - y));
+			V[i] = (int)Math.round(0.877 * (r - y));
+			Y[i] = y;
+		}
 	}
 
 }
