@@ -14,6 +14,20 @@ import java.lang.Math;
 import java.util.Arrays;
 
 public class RGB_Seg implements PlugInFilter {
+	
+	private void getRGB(int pixel, int[] pixel_rgb) {
+		pixel_rgb[0] = (pixel >> 16) & 0xff;
+		pixel_rgb[1] = (pixel >> 8) & 0xff;
+		pixel_rgb[2] = pixel & 0xff;
+	}
+	
+	private void rgb2yuv(int[] pixel_rgb, int[] pixel_yuv) {
+		double y;
+		y = 0.299 * pixel_rgb[0] + 0.587 * pixel_rgb[1] + 0.114 * pixel_rgb[2];
+		pixel_yuv[1] = (int)Math.floor(0.493 * (pixel_rgb[2] - y));
+		pixel_yuv[2] = (int)Math.floor(0.877 * (pixel_rgb[0] - y));
+		pixel_yuv[0] = (int)Math.floor(y);
+	}
 
 	public int setup(String arg, ImagePlus imp) {
 		return DOES_RGB+ROI_REQUIRED+SUPPORTS_MASKING;
@@ -108,13 +122,13 @@ public class RGB_Seg implements PlugInFilter {
 		}
 		
 		/* Minimum und Maximum setzen */
-		min[0] = (int)Math.round(m_roi[0] - (s * σ[0]));
-		min[1] = (int)Math.round(m_roi[1] - (s * σ[1]));
-		min[2] = (int)Math.round(m_roi[2] - (s * σ[2]));
+		min[0] = (int)Math.floor(m_roi[0] - (s * σ[0]));
+		min[1] = (int)Math.floor(m_roi[1] - (s * σ[1]));
+		min[2] = (int)Math.floor(m_roi[2] - (s * σ[2]));
 	
-		max[0] = (int)Math.round(m_roi[0] + (s * σ[0]));
-		max[1] = (int)Math.round(m_roi[1] + (s * σ[1]));
-		max[2] = (int)Math.round(m_roi[2] + (s * σ[2]));
+		max[0] = (int)Math.floor(m_roi[0] + (s * σ[0]));
+		max[1] = (int)Math.floor(m_roi[1] + (s * σ[1]));
+		max[2] = (int)Math.floor(m_roi[2] + (s * σ[2]));
 		
 		/* Kopie für Ausgabe anlegen */
 		ImageProcessor ip_out = ip.duplicate();
@@ -143,41 +157,24 @@ public class RGB_Seg implements PlugInFilter {
 			IJ.log("max: "+Arrays.toString(max));
 		}
 		
-		// if (show_vis) {
-			// int pc = ip.getPixelCount();
-			// int[] Y = new int[pc];
-			// int[] U = new int[pc];
-			// int[] V = new int[pc];
-			// int[][] yuv_space = new int[255][255];
-			// int[] rrr = new int[255*255];
-			// rgb2yuv(ip, Y, U, V);
-			// for (i = 0; i < pc; i++) {
-				// yuv_space[127+V[i]/2][127+U[i]/2] = (int)ip.get(i);
-			// }
-			// ImageProcessor ip_yuv = ip.createProcessor(255, 255);
-			// ip_yuv.setPixels(yuv_space);
-			// new ImagePlus("Merkmalsraum", ip_yuv).show();
-		// }
-	}
-	
-	private void getRGB(int pixel, int[] pixel_rgb) {
-		pixel_rgb[0] = (pixel >> 16) & 0xff;
-		pixel_rgb[1] = (pixel >> 8) & 0xff;
-		pixel_rgb[2] = pixel & 0xff;
-	}
-	
-	private void rgb2yuv(ImageProcessor ip, int[] Y, int[] U, int[] V) {
-		int y, p;
-		double r, g, b;
-		for (int i = 0; i < ip.getPixelCount(); i++) {
-			p = (int)ip.get(i);
-			r = (double)((p >> 16) & 0xff);
-			g = (double)((p >> 8) & 0xff);
-			b = (double)(p & 0xff);
-			y = (int)Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-			U[i] = (int)Math.round(0.493 * (b - y));
-			V[i] = (int)Math.round(0.877 * (r - y));
-			Y[i] = y;
+		if (show_vis) {
+			int pc = ip.getPixelCount();
+			int[] p_yuv = new int[3];
+			int[] p_yuv_ = new int[3];
+			ImageProcessor ip_yuv = ip.createProcessor(308, 308);
+			for (i = 0; i < pc; i++) {
+				p = ip.get(i);
+				getRGB(p, p_rgb);
+				rgb2yuv(p_rgb, p_yuv);
+				x = p_yuv[1]+154;
+				y = 154-p_yuv[2];
+				getRGB(ip_yuv.get(x, y), p_rgb);
+				rgb2yuv(p_rgb, p_yuv_);
+				if (p_yuv[0] > p_yuv_[0]) {
+					ip_yuv.set(x, y, p);
+				}
+			}
+			new ImagePlus("Merkmalsraum", ip_yuv).show();
 		}
 	}
 
