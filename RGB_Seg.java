@@ -1,12 +1,9 @@
 import ij.*;
 import ij.ImagePlus;
 import ij.gui.*;
-import ij.gui.NewImage;
 import ij.gui.GenericDialog;
-import ij.gui.ProgressBar;
 import ij.gui.Roi;
 import ij.plugin.filter.PlugInFilter;
-import ij.plugin.frame.ColorThresholder;
 import ij.process.*;
 import ij.util.ArrayUtil;
 import java.awt.*;
@@ -40,7 +37,7 @@ public class RGB_Seg implements PlugInFilter {
 		gd.setSize(300, 110);
 		String[] opts = {"Cut", "Highlight"};
 		gd.addChoice("Modus", opts, "Mask");
-		gd.addNumericField("Intervallgröße", 2.0, 2);
+		gd.addNumericField("Intervallgröße", 3.0, 2);
 		gd.addCheckbox("Zeige Log", false);
 		gd.addCheckbox("Visualisiere Merkmalsraum", false);
 		gd.setLocation((int)screensize.getWidth()/2, (int)screensize.getHeight()/2);
@@ -138,9 +135,9 @@ public class RGB_Seg implements PlugInFilter {
 		 * > wenn nicht im Intervall, "löschen" */
 		for (i = 0; i < ip_out.getPixelCount(); i++) {
 			getRGB(ip_out.get(i), p_rgb);
-			if ((min[0] < p_rgb[0] && p_rgb[0] < max[0]) 
-				&& (min[1] < p_rgb[1] && p_rgb[1] < max[1])
-				&& (min[2] < p_rgb[2] && p_rgb[2] < max[2])
+			if ((min[0] < p_rgb[0] && p_rgb[0] < max[0]) &&
+				(min[1] < p_rgb[1] && p_rgb[1] < max[1]) &&
+				(min[2] < p_rgb[2] && p_rgb[2] < max[2])
 			) {
 				if (mode == 1) ip_out.set(i, 0xff00ff);
 			}
