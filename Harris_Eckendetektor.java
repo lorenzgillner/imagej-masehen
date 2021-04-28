@@ -2,18 +2,38 @@ import ij.*;
 import ij.ImagePlus;
 import ij.gui.GenericDialog;
 import ij.plugin.filter.PlugInFilter;
+import ij.plugin.filter.MaximumFinder;
 import ij.process.*;
 import ij.util.ArrayUtil;
 import java.awt.*;
 import java.lang.Math;
+import java.util.List;
 import java.util.*;
 
 public class Harris_Eckendetektor implements PlugInFilter {
 	
-	public void toFloat(double[] a, float[] b) {
-		for (int i = 0; i < a.length; i++) {
-			b[i] = (float)a[i];
+	/* Manhattan-Distanz zur Bestimmung möglicher Nachbarn */
+	public double manhattanDistance(Point a, Point b) {
+		double sum = Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() - b.getY());
+		return sum;
+	}
+	
+	public double getNeighborhoodMax(ImageProcessor ip, int n, int x, int y) {
+		double max = 0.0;
+		double tmax;
+		float[] row = new float[n];
+		int xs = x-(int)(n/2);
+		int ys = y-(int)(n/2);
+		if (xs >= 0 && ys >= 0 && xs+n <= ip.getWidth() && ys+n <= ip.getHeight()) {
+			for (int i = 0; i < n; i++) {
+				ip.getRow(xs, ys+i, row, n);
+				tmax = new ArrayUtil(row).getMaximum();
+				if (tmax > max) {
+					max = tmax;
+				}
+			}
 		}
+		return max;
 	}
 	
 	public int setup(String arg, ImagePlus imp) {
@@ -25,46 +45,45 @@ public class Harris_Eckendetektor implements PlugInFilter {
 		Dimension screensize = Toolkit.getDefaultToolkit().getScreenSize();
 		gd.setSize(200, 100);
 		gd.addNumericField("Empfindlichkeit: ", 0.05, 2);
-		gd.addNumericField("Schwellwert: ", 0.09, 2);
-		gd.addNumericField("Radius: ", 1, 0);
-		gd.addCheckbox("Zeige Gradientenbilder", true);
+		gd.addNumericField("Sigma: ", 2, 0);
+		gd.addCheckbox("Zeige Gradientenbilder", false);
+		gd.addCheckbox("Zeige Log", false);
 		gd.setLocation((int)screensize.getWidth()/2, (int)screensize.getHeight()/2);
 		gd.showDialog();
 		
 		if (gd.wasCanceled()) return;
 		
 		/* Empfindlichkeit der Eckendetektion */
-		double i = gd.getNextNumber();
-		
-		/* Schwellwert */
-		double t = gd.getNextNumber();
+		float i = (float)gd.getNextNumber();
 	
-		int RAD = (int)gd.getNextNumber();
+		/* "Gauss-Sigma" */
+		double sigma = gd.getNextNumber();
 		
-		/* Flag für Gradientenbilder */
+		/* Flags für weitere Ausgaben */
 		boolean show_grad = gd.getNextBoolean();
+		boolean show_log = gd.getNextBoolean();
 		
 		/* Schleifenzähler */
-		int x, y;
+		int x, y, z;
+		
+		/* Größe des Kanten-Filterkerns */
+		int RAD = 1;
+		
+		/* Anzahl Nachkommastellen */
+		float DEC = (float)1e5;
+		
+		float A, B, C, AB, c;
 
 		/* Bilddimensionen */
 		int w = ip.getWidth();
 		int h = ip.getHeight();
 		
-		double s_x, s_y, s_e, current_pixel_value;
-		
-		/* "Strukturmatrix" M
-		 *		/ A	C \
-		 * 		\ C	B /
-		 */
-		double A, B, C, H;
-		
-		double[][] neighbors = new double[5][5];
-		float[] neighborsf = new float[5];
+		double s_x, s_y, current_pixel_value, max, mean;
 		
 		/* hier landen dann die Eck-Kandidaten */
 		ArrayList<Point> corners = new ArrayList<Point>();
-		ArrayList<Point> clean_corners = new ArrayList<Point>();
+		ArrayList<Point> good_corners = new ArrayList<Point>();
+		Point tmp;
 
 		/* lege Graustufenkopie an */
 		FloatProcessor ip_gs = ip.convertToFloatProcessor();
@@ -76,8 +95,9 @@ public class Harris_Eckendetektor implements PlugInFilter {
 		ip_gs.dilate();
 		
 		/* Gradientenbilder */
-		FloatProcessor ip_gradx = new FloatProcessor(w, h);
-		FloatProcessor ip_grady = new FloatProcessor(w, h);
+		FloatProcessor ip_gradA = new FloatProcessor(w, h);
+		FloatProcessor ip_gradB = new FloatProcessor(w, h);
+		FloatProcessor ip_gradC = new FloatProcessor(w, h);
 		FloatProcessor ip_corners = new FloatProcessor(w, h);
 		
 		/* Algorithmus 16.1 [Nischwitz] */
@@ -87,75 +107,66 @@ public class Harris_Eckendetektor implements PlugInFilter {
 				current_pixel_value = ip_gs.getPixelValue(x, y);
 				
 				/* bestimme Intensität der Abweichung an (x,y) */
-				s_x = Math.abs(ip_gs.getPixelValue(x-RAD, y-RAD) - ip_gs.getPixelValue(x, y-RAD))
-					+ Math.abs(ip_gs.getPixelValue(x, y-RAD) - ip_gs.getPixelValue(x+RAD, y-RAD))
-					+ Math.abs(ip_gs.getPixelValue(x-RAD-1, y) - current_pixel_value)
-					+ Math.abs(current_pixel_value - ip_gs.getPixelValue(x+RAD+1, y))
-					+ Math.abs(ip_gs.getPixelValue(x-RAD, y+RAD) - ip_gs.getPixelValue(x, y+RAD))
-					+ Math.abs(ip_gs.getPixelValue(x, y+RAD) - ip_gs.getPixelValue(x+RAD, y+RAD));
-				s_x /= 6;
+				s_x = Math.abs(ip_gs.getPixelValue(x-RAD, y-RAD) - ip_gs.getPixelValue(x+RAD, y-RAD))
+					+ Math.abs(ip_gs.getPixelValue(x-RAD, y) - ip_gs.getPixelValue(x+RAD, y))
+					+ Math.abs(ip_gs.getPixelValue(x-RAD, y+RAD) - ip_gs.getPixelValue(x+RAD, y+RAD));
+				s_x /= 3;
+
+				s_y = Math.abs(ip_gs.getPixelValue(x-RAD, y-RAD) - ip_gs.getPixelValue(x-RAD, y+RAD))
+					+ Math.abs(ip_gs.getPixelValue(x, y-RAD) - ip_gs.getPixelValue(x, y+RAD))
+					+ Math.abs(ip_gs.getPixelValue(x+RAD, y-RAD) - ip_gs.getPixelValue(x+RAD, y+RAD));
+				s_y /= 3;
 				
-				s_y = Math.abs(ip_gs.getPixelValue(x-RAD, y-RAD) - ip_gs.getPixelValue(x-RAD, y))
-					+ Math.abs(ip_gs.getPixelValue(x-RAD, y) - ip_gs.getPixelValue(x-RAD, y+RAD))
-					+ Math.abs(ip_gs.getPixelValue(x, y-RAD-1) - current_pixel_value)
-					+ Math.abs(current_pixel_value - ip_gs.getPixelValue(x, y+RAD+1))
-					+ Math.abs(ip_gs.getPixelValue(x+RAD, y-RAD) - ip_gs.getPixelValue(x+RAD, y))
-					+ Math.abs(ip_gs.getPixelValue(x+RAD, y) - ip_gs.getPixelValue(x+RAD, y+RAD));
-				s_y /= 6;
-				
-				ip_gradx.putPixelValue(x, y, s_x);
-				ip_grady.putPixelValue(x, y, s_y);
-				
-				/* bestimme M */
-				H = 5;
-				A = (s_x * s_x) * H;
-				B = (s_y * s_y) * H;
-				C = (s_x * s_y) * H;
-				
-				/* C(x,y) */
-				s_e = Math.abs(((A * B) - (C * C)) - i * Math.pow(A + B, 2.0));
-				
-				/* falls mögliche Ecke (s_e über Schwellwert), speichere Koordinaten */
-				if (s_e >= t) {
-					corners.add(new Point(x, y));
-				}
-				ip_corners.putPixelValue(x, y, s_e);
+				/* setze Pixel in Zwischenspeicher */
+				ip_gradA.putPixelValue(x, y, s_x * s_x);	// A
+				ip_gradB.putPixelValue(x, y, s_y * s_y);	// B
+				ip_gradC.putPixelValue(x, y, s_x * s_y);	// C
 			}
+		}
+		
+		/* Gauss-Weichzeichner auf Gradientenbilder anwenden */
+		ip_gradA.blurGaussian(sigma);
+		ip_gradB.blurGaussian(sigma);
+		ip_gradC.blurGaussian(sigma);
+	
+		/* Berechnung der Gütefunktion über (fast) jeden Bildpunkt */
+		for (z = 0; z < ip_corners.getPixelCount(); z++) {
+			A = ip_gradA.getf(z);
+			B = ip_gradB.getf(z);
+			C = ip_gradC.getf(z);
+			AB = A + B;
+			
+			c = ((A * B) - (C * C)) - i * (AB * AB);
+			c = (float) Math.round(c * DEC) / DEC;
+			
+			ip_corners.setf(z, c);
 		}
 
-		/* Ecken der Größe nach absteigend sortieren */
-		Collections.sort(corners, new Comparator<Point>() {
-			@Override
-			public int compare(Point p1, Point p2) {
-				return (
-					ip_corners.getPixelValue((int)p2.getX(), (int)p2.getY()) > ip_corners.getPixelValue((int)p1.getX(), (int)p1.getY())
-				) ? 1 : -1;
-			}
-		});
+		/* finde die Maxima */
+		Polygon maxima = new MaximumFinder().getMaxima(ip_corners, 1/DEC, false);
 		
-		IJ.log(""+corners);
-		
-		for (Point p: corners) {
-			int u = (int)p.getX();
-			int v = (int)p.getY();
-			boolean is_max = false;
-			
-			ip_corners.getNeighborhood(u, v, neighbors);
-			
-			for (int j = 0; j < neighbors.length; j++) {
-				toFloat(neighbors[j], neighborsf);
-				if (ip_corners.getPixelValue(u, v) / new ArrayUtil(neighborsf).getMaximum() == 1.0) {
-					is_max = true;
-					IJ.log(""+new ArrayUtil(neighborsf).getMaximum()+" "+ip_corners.getPixelValue(u, v)+" "+ip_corners.getPixelValue(u, v) / new ArrayUtil(neighborsf).getMaximum());
-				}
-			}
-			
-			if (is_max) {
-				clean_corners.add(p);
-			}
+		/* forme Maxima zu einer ArrayList um (zur leichteren Verarbeitung) */
+		for (z = 0; z < maxima.npoints; z++) {
+			x = maxima.xpoints[z];
+			y = maxima.ypoints[z];
+			/* füge Ecke nur hinzu, wenn sie in 11er-Nachbarschaft das Maximum ist */
+			// if ((double)ip_corners.getPixelValue(x, y) >= getNeighborhoodMax(ip_corners, 6, x, y)) {
+				// corners.add(new Point(x, y));
+			// }
+			corners.add(new Point(x, y));
 		}
 		
-		IJ.log(""+clean_corners);
+		/* entferne benachbarte Punkte, falls vorhanden */
+		while (corners.size() > 0) {
+			tmp = corners.get(0);
+			good_corners.add(tmp);
+			corners.remove(0);
+			for (z = 0; z < corners.size(); z++) {
+				if (manhattanDistance(tmp, corners.get(z)) < 6) {
+					corners.remove(z);
+				}
+			}
+		}
 		
 		ImageProcessor ip_out = ip.duplicate();
 		
@@ -163,34 +174,22 @@ public class Harris_Eckendetektor implements PlugInFilter {
 		ip_out.setColor(0xff00ff);
 		ip_out.setLineWidth(1);
 		
-		for (Point p: clean_corners) {
-			ip_out.drawOval((int)p.getX()-3, (int)p.getY()-3, 6, 6);
-			// if (ip_corners.getPixelValue((int)p.getX(), (int)p.getY()) != 0.0) {
-				// IJ.log(""+ ip_corners.getPixelValue((int)p.getX(), (int)p.getY()));
-			// }
+		for (Point p: good_corners) {
+			ip_out.drawOval((int)p.getX()-4, (int)p.getY()-4, 8, 8);
+			if (show_log) {
+				IJ.log("("+(int)p.getX()+","+(int)p.getY()+")");
+			}
 		}
-
-        // IJ.log("Harris Eckendetektor: i="+i+", t="+t+", #corners="+corners.size());
 		
-		// /* Ausgabe anzeigen */
+		/* Ausgabe anzeigen */
 		new ImagePlus("Hier sind die Ecken!", ip_out).show();
 		
 		if (show_grad) {
-			new ImagePlus("Gradient X", ip_gradx).show();
-			new ImagePlus("Gradient Y", ip_grady).show();
-			new ImagePlus("Gradient XY", ip_corners).show();
+			new ImagePlus("X", ip_gradA).show();
+			new ImagePlus("Y", ip_gradB).show();
+			new ImagePlus("XY", ip_gradC).show();
+			new ImagePlus("Gütefunktion", ip_corners).show();
 		}
 	}
 
 }
-
-// s_x = Math.abs(ip_gs.getPixelValue(x-RAD, y-RAD) - ip_gs.getPixelValue(x+RAD, y-RAD))
-	// + Math.abs(ip_gs.getPixelValue(x-RAD-1, y) - ip_gs.getPixelValue(x+RAD+1, y))
-	// + Math.abs(ip_gs.getPixelValue(x-RAD, y+RAD) - ip_gs.getPixelValue(x+RAD, y+RAD));
-// s_x /= 3;
-
-// s_y = Math.abs(ip_gs.getPixelValue(x-RAD, y-RAD) - ip_gs.getPixelValue(x-RAD, y+RAD))
-	// + Math.abs(ip_gs.getPixelValue(x, y-RAD-1) - ip_gs.getPixelValue(x, y+RAD+1))
-	// + Math.abs(ip_gs.getPixelValue(x+RAD, y-RAD) - ip_gs.getPixelValue(x+RAD, y+RAD));
-// s_y /= 3;
-
