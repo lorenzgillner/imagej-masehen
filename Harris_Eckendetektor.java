@@ -149,7 +149,7 @@ public class Harris_Eckendetektor implements PlugInFilter {
 		for (z = 0; z < maxima.npoints; z++) {
 			x = maxima.xpoints[z];
 			y = maxima.ypoints[z];
-			/* füge Ecke nur hinzu, wenn sie in 11er-Nachbarschaft das Maximum ist */
+			/* füge Ecke nur hinzu, wenn sie in 6er-Nachbarschaft das Maximum ist */
 			// if ((double)ip_corners.getPixelValue(x, y) >= getNeighborhoodMax(ip_corners, 6, x, y)) {
 				// corners.add(new Point(x, y));
 			// }
